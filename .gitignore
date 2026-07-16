@@ -1,0 +1,41 @@
+# ── Python ──
+backend/venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.python-version
+
+# ── 环境变量（含 API Key） ──
+.env
+backend/.env
+
+# ── 上传文件 ──
+backend/uploads/
+
+# ── 测试/临时文件 ──
+backend/test_*.pdf
+backend/*.pdf
+test_*.pdf
+*_test_output.*
+
+# ── Node ──
+frontend/node_modules/
+frontend/dist/
+
+# ── Vite 缓存 ──
+frontend/node_modules/.vite/
+.vite/
+
+# ── IDE ──
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── 日志 ──
+*.log
