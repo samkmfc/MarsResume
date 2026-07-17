@@ -173,9 +173,23 @@ body {
 .hero-stat-num { font-size: 32px; font-weight: 800; color: var(--primary-600); }
 .hero-stat-label { font-size: 13px; color: var(--slate-400); margin-top: 2px; }
 
-/* ═══════════════════════════════════════════════════════════════
-   Upload Zone (from reference design)
-   ═══════════════════════════════════════════════════════════════ */
+/* ── 下滑箭头 ── */
+.scroll-arrow {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; margin: 40px auto 0;
+  border: 1.5px solid var(--slate-300);
+  border-radius: 50%;
+  color: var(--slate-400);
+  cursor: pointer;
+  transition: all 0.3s;
+  background: transparent;
+}
+.scroll-arrow:hover { border-color: var(--primary-400); color: var(--primary-600); transform: translateY(2px); }
+.scroll-arrow svg { animation: arrowBounce 2s ease-in-out infinite; }
+@keyframes arrowBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4px); }
+}
 
 .upload-zone {
   background: #fff;

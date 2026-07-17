@@ -139,11 +139,18 @@ function AppContent() {
             <div className="card-title" style={{ justifyContent: 'center' }}>📤 上传你的简历</div>
             <WorkflowSection />
           </div>
+
+          {/* ── 下滑箭头 ── */}
+          <div className="scroll-arrow" onClick={() => document.getElementById('steps')?.scrollIntoView({ behavior: 'smooth' })}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M10 4v10M10 14l5-5M10 14l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
         </div>
       </section>
 
       {/* ── 三大步骤 ── */}
-      <section className="section section-alt">
+      <section id="steps" className="section section-alt">
         <div className="section-inner">
           <h2 className="section-title">三步搞定简历优化</h2>
           <p className="section-sub">上传简历 → AI 对齐分析 → 采纳建议导出 PDF</p>
