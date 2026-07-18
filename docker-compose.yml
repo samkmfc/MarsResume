@@ -1,0 +1,53 @@
+# ── 火星简历 · MarsResume Docker Compose ───────────────────
+# 使用方式：
+#   docker compose up -d              # 启动
+#   docker compose logs -f            # 查看日志
+#   docker compose down               # 停止
+#   docker compose restart backend    # 重启后端
+
+services:
+  # ── 后端服务 ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: marsresume-backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      # LLM API 配置（从 .env 文件读取）
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      # 服务配置
+      - SERVER_PORT=8000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      # 速率限制
+      - AI_RATE_LIMIT=${AI_RATE_LIMIT:-30}
+      - AI_RATE_WINDOW_SEC=${AI_RATE_WINDOW_SEC:-3600}
+    volumes:
+      - uploads:/app/uploads
+      - ./backend/data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/status')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── 前端服务 ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: marsresume-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  uploads:
