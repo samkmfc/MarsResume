@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/public/Mars.png" width="88" alt="MarsResume Logo" />
+  <img src="frontend/public/Mars.png" width="150" alt="MarsResume Logo" />
   <h1 align="center">火星简历 · MarsResume</h1>
   <p align="center">
     <strong>AI 驱动的简历优化工具</strong><br />
