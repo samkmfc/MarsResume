@@ -24,7 +24,9 @@ class Settings:
     AI_RATE_WINDOW_SEC: int = int(os.getenv("AI_RATE_WINDOW_SEC", "3600"))  # 1 hour
 
     # ── Data ──
-    DB_PATH: str = os.getenv("DB_PATH", str(Path(__file__).parent / "data" / "storage.json"))
+    # 优先使用环境变量，否则使用 __file__ 所在目录的相对路径
+    _default_db = str(Path(__file__).resolve().parent / "data" / "storage.json")
+    DB_PATH: str = os.getenv("DB_PATH", _default_db)
 
 
 settings = Settings()

@@ -9,6 +9,7 @@ import json
 import os
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
@@ -20,6 +21,9 @@ class Storage:
 
     def __init__(self, path: str = None):
         self.path = path or settings.DB_PATH
+        # 安全兜底：如果路径为空，使用默认值
+        if not self.path:
+            self.path = str(Path(__file__).resolve().parent / "storage.json")
         self._lock = threading.Lock()
         self._ensure_file()
 
