@@ -1,0 +1,14 @@
+# 排除不需要的文件，减小镜像体积
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.vscode/
+.git/
+.gitignore
+README.md
+*.md
+test_*
+*.log
+*.bat
