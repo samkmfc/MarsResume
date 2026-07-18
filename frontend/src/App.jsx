@@ -92,7 +92,7 @@ function AppContent() {
       <header className="header">
         <div className="header-inner">
           <a className="header-logo" href="/">
-            <img src="/Mars.png" alt="火星简历" className="header-logo-img" />
+            <img src="/new2.png" alt="火星简历" className="header-logo-img" />
             <span className="header-logo-text">火星<span>简历</span></span>
           </a>
           <nav className="header-nav">
