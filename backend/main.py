@@ -37,9 +37,9 @@ from utils.ai_utils import sanitize_input
 # ── 应用初始化 ────────────────────────────────────────────
 
 app = FastAPI(
-    title="简历模块优化器",
-    description="基于 Skill 方法论的简历优化 API — 结构化、安全、可扩展",
-    version="2.0.0",
+    title="火星简历 · MarsResume",
+    description="AI 驱动的简历优化工具 — LangGraph + MCP + RAG",
+    version="3.0.0",
 )
 
 # ── 中间件 ────────────────────────────────────────────────
@@ -52,6 +52,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GlobalExceptionMiddleware)
+
+# ── 注册路由 ──────────────────────────────────────────────
+from routes.auth import router as auth_router
+from routes.admin import router as admin_router
+from routes.rag import router as rag_router
+app.include_router(auth_router)
+app.include_router(admin_router)
+app.include_router(rag_router)
+
+# ── 启动事件 ──────────────────────────────────────────────
+
+
+@app.on_event("startup")
+async def startup():
+    """Initialize services on startup."""
+    # Initialize database (async)
+    try:
+        from database.engine import init_db
+        await init_db()
+        print("[Startup] Database initialized")
+    except Exception as e:
+        print(f"[Startup] Database init skipped (non-critical): {e}")
+
+    # Initialize RAG (lazy, just check)
+    try:
+        from services.rag_service import rag_service
+        if rag_service.enabled:
+            print(f"[Startup] RAG enabled: {rag_service.get_stats()}")
+        else:
+            print("[Startup] RAG disabled (install chromadb + sentence-transformers)")
+    except Exception as e:
+        print(f"[Startup] RAG check skipped: {e}")
 
 # ── 引擎实例（懒加载） ────────────────────────────────────
 
