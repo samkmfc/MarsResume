@@ -56,13 +56,19 @@ app.add_middleware(GlobalExceptionMiddleware)
 # ── 引擎实例（懒加载） ────────────────────────────────────
 
 _engine = None
+_langgraph_available = False
 
 
 def get_engine() -> SkillEngine:
-    global _engine
+    global _engine, _langgraph_available
     if _engine is None:
         llm = LLMClient()
         _engine = SkillEngine(llm)
+        try:
+            import langgraph  # noqa
+            _langgraph_available = True
+        except ImportError:
+            _langgraph_available = False
     return _engine
 
 # ── 健康检查 ──────────────────────────────────────────────
@@ -74,14 +80,15 @@ def get_status():
         "status": "ok",
         "message": "服务运行正常",
         "api_configured": bool(settings.LLM_API_KEY),
-        "version": "2.0.0",
+        "version": "3.0.0",
+        "langgraph_available": _langgraph_available,
     })
 
 # ── 优化核心接口 ──────────────────────────────────────────
 
 @app.post("/api/optimize")
-def optimize_resume(req: OptimizeRequest):
-    """执行简历优化（支持追问流程）"""
+async def optimize_resume(req: OptimizeRequest):
+    """执行简历优化（支持追问流程，LangGraph 驱动）"""
 
     # 速率限制 — 基于来源 IP
     client_ip = "unknown"
@@ -93,12 +100,22 @@ def optimize_resume(req: OptimizeRequest):
         )
 
     eng = get_engine()
-    result = eng.optimize(
-        resume_text=req.resume_text,
-        section_type=req.section_type,
-        section_content=req.section_content,
-        user_answers=req.user_answers,
-    )
+
+    # 使用 LangGraph 异步方法（如果可用）
+    if _langgraph_available:
+        result = await eng.optimize_async(
+            resume_text=req.resume_text,
+            section_type=req.section_type,
+            section_content=req.section_content,
+            user_answers=req.user_answers,
+        )
+    else:
+        # 降级到同步方法
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, eng.optimize, req.resume_text, req.section_type,
+            req.section_content, req.user_answers,
+        )
 
     # 如果有最终结果，存到历史
     if not result.get("need_answers") and result.get("final_text"):

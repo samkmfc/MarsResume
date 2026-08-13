@@ -252,6 +252,7 @@ def _build_summary_prompt(original: str, optimized: str) -> dict:
 class SkillEngine:
     def __init__(self, llm: LLMClient):
         self.llm = llm
+        self._graph = None  # Lazy-loaded LangGraph
 
     def _call_json(self, prompt_builder: dict, temperature: float = 0.3) -> dict:
         """调用 LLM 并解析 JSON 结果"""
@@ -387,3 +388,88 @@ class SkillEngine:
             return json.loads(text)
         except json.JSONDecodeError:
             return {"raw": text}
+
+    # ── LangGraph 异步方法 ─────────────────────────────────
+
+    def _get_graph(self):
+        """Lazy-load the LangGraph workflow."""
+        if self._graph is None:
+            from graph.workflow import optimization_graph
+            self._graph = optimization_graph
+        return self._graph
+
+    async def optimize_async(
+        self,
+        resume_text: str,
+        section_type: str,
+        section_content: str,
+        user_answers: Optional[str] = None,
+        jd_text: Optional[str] = None,
+    ) -> dict:
+        """
+        Async optimization using LangGraph workflow.
+        Falls back to synchronous optimize() if LangGraph unavailable.
+        """
+        try:
+            graph = self._get_graph()
+        except ImportError:
+            # Fallback to sync method
+            return self.optimize(resume_text, section_type, section_content, user_answers)
+
+        # Build initial state
+        initial_state = {
+            "resume_text": resume_text,
+            "jd_text": jd_text or "",
+            "section_type": section_type,
+            "section_content": section_content,
+            "user_answers": user_answers,
+            "deep_dive_result": None,
+            "highlights_result": None,
+            "optimized_text": None,
+            "metrics_check_result": None,
+            "self_check_result": None,
+            "final_text": None,
+            "changes_summary": None,
+            "need_answers": False,
+            "questions": [],
+            "known_info": "",
+            "retry_count": 0,
+            "max_retries": 3,
+            "errors": [],
+        }
+
+        # Execute graph
+        try:
+            result = await graph.ainvoke(initial_state)
+        except Exception as e:
+            # Fallback
+            return self.optimize(resume_text, section_type, section_content, user_answers)
+
+        # Format response
+        final_text = result.get("final_text") or result.get("optimized_text", "")
+        changes_summary = result.get("changes_summary") or []
+
+        if not final_text and result.get("need_answers"):
+            return {
+                "need_answers": True,
+                "questions": result.get("questions", []),
+                "known_info": result.get("known_info", ""),
+                "step1_result": result.get("deep_dive_result", {}),
+            }
+
+        # Generate summary if empty
+        if not changes_summary and final_text and section_content:
+            changes_summary = self._generate_summary(section_content, final_text)
+
+        return {
+            "need_answers": False,
+            "final_text": final_text,
+            "changes_summary": changes_summary,
+            "results": {
+                "step1": result.get("deep_dive_result", {}),
+                "step2": result.get("highlights_result", {}),
+                "step3_optimized": result.get("optimized_text", ""),
+                "step4": result.get("metrics_check_result", {}),
+                "step5": result.get("self_check_result", {}),
+            },
+        }
