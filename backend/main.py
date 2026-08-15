@@ -15,7 +15,14 @@
 import json
 import asyncio
 import os
+import sys
 from pathlib import Path
+
+# Ensure backend package is importable when running as module
+_backend_dir = Path(__file__).resolve().parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
+
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
@@ -451,6 +458,6 @@ def export_resume_pdf(
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"🚀 简历优化服务 v2.0 启动于 http://localhost:{settings.SERVER_PORT}")
+    print(f"🚀 简历优化服务 v3.0.0 启动于 http://localhost:{settings.SERVER_PORT}")
     print(f"📄 API 文档: http://localhost:{settings.SERVER_PORT}/docs")
     uvicorn.run("main:app", host="0.0.0.0", port=settings.SERVER_PORT, reload=True)

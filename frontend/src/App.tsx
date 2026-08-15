@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useAppStore } from './stores/appStore'
 import Header from './components/Header'
-import Hero from './components/Hero'
 import FeatureGrid from './components/FeatureGrid'
 import StepIndicator from './components/StepIndicator'
 import ResumeInput from './components/ResumeInput'
@@ -19,21 +18,14 @@ function WorkflowSection() {
   } = useAppStore()
 
   if (apiReady === null) return null
-  if (apiReady === false) {
-    return (
-      <div className="card text-center" style={{ padding: 48 }}>
-        <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>配置 API Key</h3>
-        <p className="text-slate-500 text-sm" style={{ marginBottom: 24 }}>
-          请在 .env 文件中配置 LLM_API_KEY
-        </p>
-      </div>
-    )
-  }
 
+  // Beta 阶段：API 未配置时也不阻塞，显示提示条即可
   return (
     <div className="tool-container">
+      {/* 工作流步骤指示器 */}
       {step >= 1 && <StepIndicator currentStep={step} />}
 
+      {/* Step 0: 欢迎/开始 */}
       {step === 0 && (
         <div className="card text-center" style={{ padding: 48 }}>
           <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>开始优化你的简历</h3>
@@ -46,6 +38,7 @@ function WorkflowSection() {
         </div>
       )}
 
+      {/* Step 1: 上传简历 + 输入 JD */}
       {step === 1 && (
         <ResumeInput
           resumeText={resumeText}
@@ -63,6 +56,7 @@ function WorkflowSection() {
         />
       )}
 
+      {/* Step 3: 结果展示 */}
       {step === 3 && (
         <SuggestionList
           suggestions={suggestions}

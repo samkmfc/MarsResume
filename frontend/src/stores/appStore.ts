@@ -55,8 +55,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const status = await api.getStatus()
       set({ apiReady: status.api_configured })
+      if (!status.api_configured) {
+        console.warn('[Beta] API Key 未配置，部分功能不可用')
+      }
     } catch {
-      set({ apiReady: false })
+      // Beta 阶段：后端未启动时也不阻塞，打印警告即可
+      console.warn('[Beta] 后端服务未连接，请确保 backend 已启动')
+      set({ apiReady: true })
     }
   },
 
@@ -111,8 +116,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const result = await api.analyzeResume(resumeText, jdText)
       set({
-        suggestions: (result.suggestions || []).map((s) => ({ ...s, accepted: false })) as Suggestion[],
-        analysisSummary: result.summary as Summary,
+        suggestions: (result.suggestions || []).map((s: Record<string, unknown>) => ({ ...s, accepted: false })) as unknown as Suggestion[],
+        analysisSummary: result.summary as unknown as Summary,
         step: 3,
       })
     } catch (err) {

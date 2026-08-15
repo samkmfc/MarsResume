@@ -39,9 +39,9 @@ def check_module(module_name: str) -> bool:
 
     if module_name in ("mcp", "all"):
         print("\n[MCP Server]")
-        checks.append(("mcp/server.py 存在", os.path.exists("backend/mcp/server.py")))
-        checks.append(("mcp/run.py 存在", os.path.exists("backend/mcp/run.py")))
-        checks.append(("mcp 可独立导入", _try_import("backend.mcp")))
+        checks.append(("mcp_server/server.py 存在", os.path.exists("backend/mcp_server/server.py")))
+        checks.append(("mcp_server/run.py 存在", os.path.exists("backend/mcp_server/run.py")))
+        checks.append(("mcp_server 可独立导入", _try_import("backend.mcp_server")))
 
     if module_name in ("rag", "all"):
         print("\n[RAG 知识库]")
@@ -74,7 +74,7 @@ def check_module(module_name: str) -> bool:
 
     # 执行校验
     for name, result in checks:
-        status = "✅" if result else "❌"
+        status = "[PASS]" if result else "[FAIL]"
         if result:
             passed += 1
         else:
@@ -107,6 +107,7 @@ def main():
 
     # 切换到项目根目录
     os.chdir(args.path)
+    sys.path.insert(0, os.getcwd())
 
     success = check_module(args.module)
     sys.exit(0 if success else 1)
