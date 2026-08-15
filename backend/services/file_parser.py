@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 # PDF
-import fitz  # PyMuPDF
+import pymupdf  # PyMuPDF
 
 # Word
 from docx import Document
@@ -81,7 +81,7 @@ def extract_text(file_path: str, ext: str) -> str:
 
 def _extract_pdf(file_path: str) -> str:
     """从 PDF 提取文本，无文字层时尝试 OCR"""
-    doc = fitz.open(file_path)
+    doc = pymupdf.open(file_path)
     text_parts = []
     need_ocr_pages = []
 
@@ -102,7 +102,7 @@ def _extract_pdf(file_path: str) -> str:
     return "\n\n".join(text_parts) if text_parts else ""
 
 
-def _ocr_pdf_pages(doc: fitz.Document, page_nums: list[int]) -> str:
+def _ocr_pdf_pages(doc: pymupdf.Document, page_nums: list[int]) -> str:
     """对 PDF 指定页面进行 OCR"""
     try:
         from easyocr import Reader

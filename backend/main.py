@@ -15,7 +15,14 @@
 import json
 import asyncio
 import os
+import sys
 from pathlib import Path
+
+# Ensure backend package is importable when running as module
+_backend_dir = Path(__file__).resolve().parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
+
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
@@ -37,9 +44,9 @@ from utils.ai_utils import sanitize_input
 # ── 应用初始化 ────────────────────────────────────────────
 
 app = FastAPI(
-    title="简历模块优化器",
-    description="基于 Skill 方法论的简历优化 API — 结构化、安全、可扩展",
-    version="2.0.0",
+    title="火星简历 · MarsResume",
+    description="AI 驱动的简历优化工具 — LangGraph + MCP + RAG",
+    version="3.0.0",
 )
 
 # ── 中间件 ────────────────────────────────────────────────
@@ -53,16 +60,54 @@ app.add_middleware(
 )
 app.add_middleware(GlobalExceptionMiddleware)
 
+# ── 注册路由 ──────────────────────────────────────────────
+from routes.auth import router as auth_router
+from routes.admin import router as admin_router
+from routes.rag import router as rag_router
+app.include_router(auth_router)
+app.include_router(admin_router)
+app.include_router(rag_router)
+
+# ── 启动事件 ──────────────────────────────────────────────
+
+
+@app.on_event("startup")
+async def startup():
+    """Initialize services on startup."""
+    # Initialize database (async)
+    try:
+        from database.engine import init_db
+        await init_db()
+        print("[Startup] Database initialized")
+    except Exception as e:
+        print(f"[Startup] Database init skipped (non-critical): {e}")
+
+    # Initialize RAG (lazy, just check)
+    try:
+        from services.rag_service import rag_service
+        if rag_service.enabled:
+            print(f"[Startup] RAG enabled: {rag_service.get_stats()}")
+        else:
+            print("[Startup] RAG disabled (install chromadb + sentence-transformers)")
+    except Exception as e:
+        print(f"[Startup] RAG check skipped: {e}")
+
 # ── 引擎实例（懒加载） ────────────────────────────────────
 
 _engine = None
+_langgraph_available = False
 
 
 def get_engine() -> SkillEngine:
-    global _engine
+    global _engine, _langgraph_available
     if _engine is None:
         llm = LLMClient()
         _engine = SkillEngine(llm)
+        try:
+            import langgraph  # noqa
+            _langgraph_available = True
+        except ImportError:
+            _langgraph_available = False
     return _engine
 
 # ── 健康检查 ──────────────────────────────────────────────
@@ -74,14 +119,15 @@ def get_status():
         "status": "ok",
         "message": "服务运行正常",
         "api_configured": bool(settings.LLM_API_KEY),
-        "version": "2.0.0",
+        "version": "3.0.0",
+        "langgraph_available": _langgraph_available,
     })
 
 # ── 优化核心接口 ──────────────────────────────────────────
 
 @app.post("/api/optimize")
-def optimize_resume(req: OptimizeRequest):
-    """执行简历优化（支持追问流程）"""
+async def optimize_resume(req: OptimizeRequest):
+    """执行简历优化（支持追问流程，LangGraph 驱动）"""
 
     # 速率限制 — 基于来源 IP
     client_ip = "unknown"
@@ -93,12 +139,22 @@ def optimize_resume(req: OptimizeRequest):
         )
 
     eng = get_engine()
-    result = eng.optimize(
-        resume_text=req.resume_text,
-        section_type=req.section_type,
-        section_content=req.section_content,
-        user_answers=req.user_answers,
-    )
+
+    # 使用 LangGraph 异步方法（如果可用）
+    if _langgraph_available:
+        result = await eng.optimize_async(
+            resume_text=req.resume_text,
+            section_type=req.section_type,
+            section_content=req.section_content,
+            user_answers=req.user_answers,
+        )
+    else:
+        # 降级到同步方法
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, eng.optimize, req.resume_text, req.section_type,
+            req.section_content, req.user_answers,
+        )
 
     # 如果有最终结果，存到历史
     if not result.get("need_answers") and result.get("final_text"):
@@ -402,6 +458,6 @@ def export_resume_pdf(
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"🚀 简历优化服务 v2.0 启动于 http://localhost:{settings.SERVER_PORT}")
+    print(f"🚀 简历优化服务 v3.0.0 启动于 http://localhost:{settings.SERVER_PORT}")
     print(f"📄 API 文档: http://localhost:{settings.SERVER_PORT}/docs")
     uvicorn.run("main:app", host="0.0.0.0", port=settings.SERVER_PORT, reload=True)
