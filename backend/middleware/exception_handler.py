@@ -9,6 +9,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from middleware.exceptions import AppError
 from schemas.response import ApiResponse
 
 
@@ -19,6 +20,13 @@ class GlobalExceptionMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             return response
+        except AppError as e:
+            # 应用异常（未认证/无权限/超额等）：按异常自带的状态码返回，
+            # 否则会落入下方通用分支被误报成 500。
+            return JSONResponse(
+                status_code=e.status_code,
+                content=ApiResponse.fail(error=e.message, meta={"code": e.code, **e.detail}),
+            )
         except ValueError as e:
             return JSONResponse(
                 status_code=400,

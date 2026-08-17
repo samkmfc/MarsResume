@@ -23,9 +23,10 @@ _backend_dir = Path(__file__).resolve().parent
 if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
-from fastapi import FastAPI, Request, UploadFile, File, Form
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from schemas.request import OptimizeRequest
@@ -40,6 +41,8 @@ from utils.pdf_generator import generate_resume_pdf
 from data.db import storage
 from utils.rate_limit import ai_rate_limiter
 from utils.ai_utils import sanitize_input
+from auth.deps import check_usage_limit
+from database.engine import get_db, increment_usage, async_session_factory
 
 # ── 应用初始化 ────────────────────────────────────────────
 
@@ -95,19 +98,18 @@ async def startup():
 # ── 引擎实例（懒加载） ────────────────────────────────────
 
 _engine = None
-_langgraph_available = False
+
+try:
+    import langgraph  # noqa: F401
+    _langgraph_available = True
+except ImportError:
+    _langgraph_available = False
 
 
 def get_engine() -> SkillEngine:
-    global _engine, _langgraph_available
+    global _engine
     if _engine is None:
-        llm = LLMClient()
-        _engine = SkillEngine(llm)
-        try:
-            import langgraph  # noqa
-            _langgraph_available = True
-        except ImportError:
-            _langgraph_available = False
+        _engine = SkillEngine(LLMClient())
     return _engine
 
 # ── 健康检查 ──────────────────────────────────────────────
@@ -126,7 +128,11 @@ def get_status():
 # ── 优化核心接口 ──────────────────────────────────────────
 
 @app.post("/api/optimize")
-async def optimize_resume(req: OptimizeRequest):
+async def optimize_resume(
+    req: OptimizeRequest,
+    user=Depends(check_usage_limit),
+    db: AsyncSession = Depends(get_db),
+):
     """执行简历优化（支持追问流程，LangGraph 驱动）"""
 
     # 速率限制 — 基于来源 IP
@@ -156,7 +162,7 @@ async def optimize_resume(req: OptimizeRequest):
             req.section_content, req.user_answers,
         )
 
-    # 如果有最终结果，存到历史
+    # 完成一次优化：存历史 + 计入配额（仅在产出终版时扣减）
     if not result.get("need_answers") and result.get("final_text"):
         storage.save_optimization(
             section_type=req.section_type,
@@ -164,6 +170,7 @@ async def optimize_resume(req: OptimizeRequest):
             optimized_text=result["final_text"],
             changes_summary=result.get("changes_summary", []),
         )
+        await increment_usage(db, user.id)
 
     return ApiResponse.ok(data=result, meta={"rate_limit_remaining": remaining})
 
@@ -171,7 +178,7 @@ async def optimize_resume(req: OptimizeRequest):
 # ── 流式优化接口（SSE） ──────────────────────────────────
 
 @app.post("/api/optimize/stream")
-async def optimize_resume_stream(req: OptimizeRequest):
+async def optimize_resume_stream(req: OptimizeRequest, user=Depends(check_usage_limit)):
     """
     流式简历优化 — 通过 SSE 逐步推送各步骤结果
     Event 类型：
@@ -270,6 +277,11 @@ async def optimize_resume_stream(req: OptimizeRequest):
             changes_summary=changes,
         )
 
+        # 流式响应期间依赖的 get_db 已结束，单独开 session 计入配额
+        async with async_session_factory() as session:
+            await increment_usage(session, user.id)
+            await session.commit()
+
         # 完成
         yield f"event: done\ndata: {json.dumps({'final_text': final_text, 'changes_summary': changes, 'rate_limit_remaining': remaining}, ensure_ascii=False)}\n\n"
 
@@ -360,7 +372,12 @@ async def upload_resume(file: UploadFile = File(...)):
 
 
 @app.post("/api/resume/analyze")
-def analyze_resume(resume_text: str = Form(...), jd_text: str = Form(...)):
+async def analyze_resume(
+    resume_text: str = Form(...),
+    jd_text: str = Form(...),
+    user=Depends(check_usage_limit),
+    db: AsyncSession = Depends(get_db),
+):
     """简历与 JD 对齐分析，返回逐条修改建议"""
     if not resume_text.strip() or not jd_text.strip():
         return ApiResponse.fail(error="简历文本和职位描述不能为空")
@@ -369,7 +386,9 @@ def analyze_resume(resume_text: str = Form(...), jd_text: str = Form(...)):
         return ApiResponse.fail(error=f"请求过于频繁", meta={"retry_after": remaining})
     llm = LLMClient()
     analyzer = JDAnalyzer(llm)
-    result = analyzer.analyze(resume_text, jd_text)
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, analyzer.analyze, resume_text, jd_text)
+    await increment_usage(db, user.id)
     return ApiResponse.ok(data=result, meta={"rate_limit_remaining": remaining})
 
 
@@ -385,11 +404,9 @@ def export_resume_pdf(
     - .docx 格式：在原始 Word 文档上精确替换文本，然后通过 Word COM 转 PDF（保留原始排版）
     - 其他格式：用 ReportLab 生成 PDF（文字保留，排版简化）
     """
-    import json as _json
-
     try:
-        replacements = _json.loads(replacements_json)
-    except _json.JSONDecodeError:
+        replacements = json.loads(replacements_json)
+    except json.JSONDecodeError:
         replacements = []
 
     # 查找原始文件
@@ -401,16 +418,12 @@ def export_resume_pdf(
             out_docx = UPLOAD_DIR / f"{file_id}_modified.docx"
             out_pdf = UPLOAD_DIR / f"{file_id}_export.pdf"
 
-            # 执行替换
             apply_replacements(str(orig_path), replacements, str(out_docx))
-
-            # 转 PDF
             convert_to_pdf(str(out_docx), str(out_pdf))
 
             with open(out_pdf, "rb") as f:
                 pdf_bytes = f.read()
 
-            # 清理临时文件
             cleanup_file(str(out_docx))
             cleanup_file(str(out_pdf))
 
@@ -427,21 +440,17 @@ def export_resume_pdf(
             return ApiResponse.fail(error=f"PDF 导出失败: {str(e)}")
     else:
         # ── 降级流程：ReportLab 生成（保留文字，排版简化） ──
-        # 将 replacements 应用到文本，再生成 PDF
         text = ""
         p = UPLOAD_DIR / f"{file_id}{ext}"
         if p.exists():
-            from services.file_parser import extract_text as _extract
-            text = _extract(str(p), ext)
+            text = extract_text(str(p), ext)
 
         # 应用替换
         for r in replacements:
             text = text.replace(r.get("original", ""), r.get("suggested", ""))
 
-        sections = _json.loads(_json.dumps([{"heading": "简历内容", "content": text}]))
-
         try:
-            pdf_buf = generate_resume_pdf(title=title, sections=sections)
+            pdf_buf = generate_resume_pdf(title=title, sections=[{"heading": "简历内容", "content": text}])
             return StreamingResponse(
                 pdf_buf, media_type="application/pdf",
                 headers={

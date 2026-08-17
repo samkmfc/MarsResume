@@ -3,6 +3,7 @@
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -34,7 +35,8 @@ class Settings:
     RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "5"))
 
     # ── Auth / JWT ──
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "mars-resume-dev-secret-change-in-production")
+    # 无默认值 — 必须在 .env / 环境变量中显式设置，启动时校验（见文件末尾）
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))  # 24h
 
@@ -48,3 +50,19 @@ class Settings:
 
 
 settings = Settings()
+
+
+# ── JWT 密钥启动校验 ───────────────────────────────────────
+# 移除硬编码默认值后，必须在环境变量中显式设置一个随机密钥。
+# 空值或沿用源码里的公开占位符都会直接拒绝启动，防止任何人伪造令牌。
+# 测试（pytest）下放宽，保留 conftest "无需 .env" 的约定。
+_INSECURE_PLACEHOLDER = "mars-resume-dev-secret-change-in-production"
+if (
+    not settings.JWT_SECRET_KEY
+    or settings.JWT_SECRET_KEY == _INSECURE_PLACEHOLDER
+) and "pytest" not in sys.modules:
+    raise RuntimeError(
+        "JWT_SECRET_KEY 未配置或沿用了公开占位符。"
+        "请在 .env / 环境变量中设置随机密钥："
+        'python -c "import secrets; print(secrets.token_hex(32))"'
+    )

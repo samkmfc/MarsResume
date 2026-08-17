@@ -6,8 +6,10 @@ from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.jwt import verify_token, get_token_from_header
+from database.engine import get_db, get_user_by_id
 from middleware.exceptions import UnauthorizedError, ForbiddenError, QuotaExceededError
 
 security = HTTPBearer(auto_error=False)
@@ -72,24 +74,43 @@ def require_plan(min_plan: str = "pro"):
 
 
 async def check_usage_limit(
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
-) -> None:
+    current_user: Dict[str, Any] = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
-    Check if user has exceeded their usage quota.
-    Only applies to authenticated users.
-    """
-    if current_user is None:
-        return
+    Require an authenticated user and enforce their plan's usage quota.
 
+    JWT 里的 plan/usage_count 在签发后就过时了，这里以 DB 为准读取实时值，
+    超额则抛 QuotaExceededError。返回最新的 User 对象，供路由在成功后调用
+    increment_usage。
+    """
     from config import settings
 
-    plan = current_user.get("plan", "free")
-    usage_count = current_user.get("usage_count", 0)
+    user = await get_user_by_id(db, current_user["sub"])
+    if user is None:
+        raise UnauthorizedError("用户不存在")
+    if not user.is_active:
+        raise UnauthorizedError("账户已被禁用")
+
     usage_limit = (
-        settings.FREE_USAGE_LIMIT if plan == "free"
-        else settings.PRO_USAGE_LIMIT if plan == "pro"
+        settings.FREE_USAGE_LIMIT if user.plan == "free"
+        else settings.PRO_USAGE_LIMIT if user.plan == "pro"
         else 999999
     )
+    if user.usage_count >= usage_limit:
+        raise QuotaExceededError(plan=user.plan, limit=usage_limit)
+    return user
 
-    if usage_count >= usage_limit:
-        raise QuotaExceededError(plan=plan, limit=usage_limit)
+
+async def require_admin(
+    current_user: Dict[str, Any] = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """
+    要求管理员权限。登录 token 从不带 is_admin，因此以 DB 中的字段为准，
+    避免"JWT 里没有该字段 → 永远 403"或"可被伪造"两个极端。
+    """
+    user = await get_user_by_id(db, current_user["sub"])
+    if user is None or not user.is_admin:
+        raise ForbiddenError("需要管理员权限")
+    return current_user
