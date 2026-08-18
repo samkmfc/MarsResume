@@ -5,7 +5,7 @@ Authentication routes — register, login, profile.
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from passlib.hash import bcrypt
+import bcrypt
 
 from auth.jwt import create_access_token
 from auth.middleware import get_current_user
@@ -33,7 +33,7 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     if existing:
         raise ValidationError("该邮箱已被注册")
 
-    hashed = bcrypt.hash(req.password)
+    hashed = bcrypt.hashpw(req.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     user = await create_user(db, req.email, req.username, hashed)
 
     return {
@@ -53,7 +53,7 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Login and return JWT token."""
     user = await get_user_by_email(db, req.email)
-    if not user or not bcrypt.verify(req.password, user.hashed_password):
+    if not user or not bcrypt.checkpw(req.password.encode("utf-8"), user.hashed_password.encode("utf-8")):
         raise UnauthorizedError("邮箱或密码错误")
 
     access_token = create_access_token(

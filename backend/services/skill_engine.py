@@ -408,13 +408,16 @@ class SkillEngine:
     ) -> dict:
         """
         Async optimization using LangGraph workflow.
-        Falls back to synchronous optimize() if LangGraph unavailable.
+        Falls back to synchronous optimize() in a thread pool if LangGraph unavailable.
         """
         try:
             graph = self._get_graph()
         except ImportError:
-            # Fallback to sync method
-            return self.optimize(resume_text, section_type, section_content, user_answers)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None, self.optimize, resume_text, section_type, section_content, user_answers,
+            )
 
         # Build initial state
         initial_state = {
@@ -438,12 +441,7 @@ class SkillEngine:
             "errors": [],
         }
 
-        # Execute graph
-        try:
-            result = await graph.ainvoke(initial_state)
-        except Exception as e:
-            # Fallback
-            return self.optimize(resume_text, section_type, section_content, user_answers)
+        result = await graph.ainvoke(initial_state)
 
         # Format response
         final_text = result.get("final_text") or result.get("optimized_text", "")

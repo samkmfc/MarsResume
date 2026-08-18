@@ -1,1 +1,1 @@
-# MCP imports
+# LangGraph resume optimization workflow

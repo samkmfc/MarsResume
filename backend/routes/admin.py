@@ -6,18 +6,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.deps import require_user
+from auth.deps import require_admin
 from database.engine import get_db
-from middleware.exceptions import ForbiddenError
 from models.user import User
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-
-async def _check_admin(current_user: dict = Depends(require_user)):
-    if not current_user.get("is_admin"):
-        raise ForbiddenError("需要管理员权限")
-    return current_user
 
 
 @router.get("/users")
@@ -25,7 +18,7 @@ async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _admin: dict = Depends(_check_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """List all users (admin only)."""
     offset = (page - 1) * page_size
@@ -52,7 +45,7 @@ async def update_user_plan(
     user_id: str,
     plan: str,
     db: AsyncSession = Depends(get_db),
-    _admin: dict = Depends(_check_admin),
+    _admin: dict = Depends(require_admin),
 ):
     """Update user's plan (admin only)."""
     if plan not in ("free", "pro", "enterprise"):

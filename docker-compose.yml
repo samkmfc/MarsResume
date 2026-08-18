@@ -20,6 +20,8 @@ services:
       - LLM_API_KEY=${LLM_API_KEY:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      # 鉴权 — JWT 密钥必须设置，否则后端启动会失败
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-}
       # 服务配置
       - SERVER_PORT=8000
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
